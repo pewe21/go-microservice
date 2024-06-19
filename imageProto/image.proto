@@ -1,0 +1,16 @@
+syntax = "proto3";
+package imageProto;
+option go_package = "github.com/pewe21/imageProto";
+
+message ImageResp{
+    string filename = 3;
+}
+
+message CreateImageReq {
+    bytes imageFile = 1;
+    string fileName = 2;
+}
+
+service User {
+    rpc CreateImage(CreateImageReq) returns (ImageResp){}
+}

@@ -1,0 +1,211 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    volumes:
+      - /var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  postgresUser:
+    image: postgres:13
+    container_name: postgres_userService
+    hostname: postgres
+    volumes:
+      - dbStore:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER_USERSERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_USERSERVICE}
+      POSTGRES_DB: ${POSTGRES_DB_USERSERVICE}
+
+  postgresPost:
+    image: postgres:13
+    container_name: postgres_postService
+    hostname: postgresPost
+    volumes:
+      - dbStore2:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER_POSTSERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_POSTSERVICE}
+      POSTGRES_DB: ${POSTGRES_DB_POSTSERVICE}
+
+  load_balancer:
+    image: nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - image_service1
+      - image_service2
+
+      - user_service1
+      - user_service2
+
+      - auth_service1
+      - auth_service2
+
+      - post_service1
+      - post_service2
+
+  image_service1:
+    build:
+      context: .
+      dockerfile: /imageservice/Dockerfile
+    volumes:
+      - imageservice:/app/data
+    environment:
+      instance: 1
+      JWT_SECRET: secret
+      REFRESH_SECRET: rsecret
+      PORT: 80
+
+  image_service2:
+    build:
+      context: .
+      dockerfile: /imageservice/Dockerfile
+    volumes:
+      - imageservice:/app/data
+    environment:
+      instance: 2
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      PORT: 80
+
+  user_service1:
+    build:
+      context: .
+      dockerfile: /userService/Dockerfile
+    volumes:
+      - service:/app/user
+    environment:
+      instance: 1
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      USER_SERVICE_HOSTNAME: "user_service"
+      IMAGE_SERVICE_HOSTNAME: "image_service"
+      RABBITMQ_HOSTNAME: "rabbitmq"
+      POSTGRES_USER: ${POSTGRES_USER_USERSERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_USERSERVICE}
+      POSTGRES_DB: ${POSTGRES_DB_USERSERVICE}
+      POSTGRES_HOST: postgres_userService
+    depends_on:
+      postgresUser:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  user_service2:
+    build:
+      context: .
+      dockerfile: /userService/Dockerfile
+    volumes:
+      - service:/app/user
+    environment:
+      instance: 2
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      USER_SERVICE_HOSTNAME: "user_service"
+      IMAGE_SERVICE_HOSTNAME: "image_service"
+      RABBITMQ_HOSTNAME: "rabbitmq"
+      POSTGRES_USER: ${POSTGRES_USER_USERSERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_USERSERVICE}
+      POSTGRES_DB: ${POSTGRES_DB_USERSERVICE}
+      POSTGRES_HOST: postgres_userService
+    depends_on:
+      postgresUser:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  auth_service1:
+    build:
+      context: .
+      dockerfile: /authService/Dockerfile
+    volumes:
+      - service:/app/auth
+    environment:
+      instance: 1
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      USER_SERVICE_HOSTNAME: "user_service"
+
+  auth_service2:
+    build:
+      context: .
+      dockerfile: /authService/Dockerfile
+    volumes:
+      - service:/app/auth
+    environment:
+      instance: 2
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      USER_SERVICE_HOSTNAME: "user_service"
+  post_service1:
+    build:
+      context: .
+      dockerfile: /postService/Dockerfile
+    volumes:
+      - service:/app/post
+    environment:
+      instance: 1
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      USER_SERVICE_HOSTNAME: "user_service"
+      IMAGE_SERVICE_HOSTNAME: "image_service"
+      RABBITMQ_HOSTNAME: "rabbitmq"
+      POSTGRES_USER: ${POSTGRES_USER_POSTSERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_POSTSERVICE}
+      POSTGRES_DB: ${POSTGRES_DB_POSTSERVICE}
+      POSTGRES_HOST: postgres_postService
+    depends_on:
+      postgresPost:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  post_service2:
+    build:
+      context: .
+      dockerfile: /postService/Dockerfile
+    volumes:
+      - service:/app/post
+    environment:
+      instance: 2
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_SECRET: ${REFRESH_SECRET}
+      USER_SERVICE_HOSTNAME: "user_service"
+      IMAGE_SERVICE_HOSTNAME: "image_service"
+      RABBITMQ_HOSTNAME: "rabbitmq"
+      POSTGRES_USER: ${POSTGRES_USER_POSTSERVICE}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_POSTSERVICE}
+      POSTGRES_DB: ${POSTGRES_DB_POSTSERVICE}
+      POSTGRES_HOST: postgres_postService
+    depends_on:
+      postgresPost:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  imageservice:
+  dbStore:
+  dbStore2:
+  service:
